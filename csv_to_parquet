@@ -1,0 +1,182 @@
+//pg 31
+spark.conf.set("spark.sql.shuffle.partitions", "32//pg 31
+spark.conf.set("spark.sql.shuffle.partitions", "32")
+
+//pg 60
+import org.apache.spark.sql.types.{StructField, StructType, DoubleType}
+
+//pg 166
+val susySchema = new StructType(Array(
+        new StructField("LAB", DoubleType, false),
+        new StructField("LEPTON_1_PT", DoubleType, false),
+        new StructField("LEPTON_1_ETA", DoubleType, false),
+        new StructField("LEPTON_1_PHI", DoubleType, false),
+        new StructField("LEPTON_2_PT", DoubleType, false),
+        new StructField("LEPTON_2_ETA", DoubleType, false),
+        new StructField("LEPTON_2_PHI", DoubleType, false),
+        new StructField("MISSING_ENERGY_MAGNITUDE", DoubleType, false),
+        new StructField("MISSING_ENERGY_PHI", DoubleType, false),
+        new StructField("MET_REL", DoubleType, false),
+        new StructField("AXIAL_MET", DoubleType, false),
+        new StructField("M_R", DoubleType, false),
+        new StructField("M_TR_2", DoubleType, false),
+        new StructField("R", DoubleType, false),
+        new StructField("MT2", DoubleType, false),
+        new StructField("S_R", DoubleType, false),
+        new StructField("M_DELTA_R", DoubleType, false),
+        new StructField("DPHI_R_B", DoubleType, false),
+        new StructField("COS[THETA_R1]", DoubleType, false) ))
+
+//pg 166
+val susyCSV = spark.read.format("csv").option("header", "false").option("mode", "FAILFAST").schema(susySchema).load("/home/data/susy/SUSY.csv")
+")
+
+//pg 60
+import org.apache.spark.sql.types.{StructField, StructType, DoubleType}
+
+//pg 166
+val susySchema = new StructType(Array(
+	new StructField("LAB", DoubleType, false),
+	new StructField("LEPTON_1_PT", DoubleType, false),
+	new StructField("LEPTON_1_ETA", DoubleType, false),
+	new StructField("LEPTON_1_PHI", DoubleType, false),
+	new StructField("LEPTON_2_PT", DoubleType, false),
+	new StructField("LEPTON_2_ETA", DoubleType, false),
+	new StructField("LEPTON_2_PHI", DoubleType, false),
+	new StructField("MISSING_ENERGY_MAGNITUDE", DoubleType, false),
+	new StructField("MISSING_ENERGY_PHI", DoubleType, false),
+	new StructField("MET_REL", DoubleType, false),
+	new StructField("AXIAL_MET", DoubleType, false),
+	new StructField("M_R", DoubleType, false),
+	new StructField("M_TR_2", DoubleType, false),
+	new StructField("R", DoubleType, false),
+	new StructField("MT2", DoubleType, false),
+	new StructField("S_R", DoubleType, false),
+	new StructField("M_DELTA_R", DoubleType, false),
+	new StructField("DPHI_R_B", DoubleType, false),
+	new StructField("COS[THETA_R1]", DoubleType, false) ))
+
+//pg 166
+val susyCSV = spark.read.format("csv").option("header", "false").option("mode", "FAILFAST").schema(susySchema).load("/home/data/susy/SUSY.csv")
+
+//pg 172
+susyCSV.write.format("parquet").option("compression", "gzip").mode("overwrite").save("/home/2020/summer/dk1384/cp/data/susy.parquet")
+
+val susyDF = spark.read.format("parquet").option("compression", "gzip").load("/home/2020/summer/dk1384/cp/data/susy.parquet")
+
+//pg 413
+val Array(train, test) = susyDF.randomSplit(Array(0.002, 0.998))
+
+//pg 409
+import org.apache.spark.ml.feature.RFormula
+val supervised = new RFormula().setFormula("LAB ~ .")
+
+val fittedRF = supervised.fit(susyDF)
+val preparedDF = fittedRF.transform(susyDF)
+
+//pg 411
+val Array(train, test) = preparedDF.randomSplit(Array(.002, .998))
+
+import org.apache.spark.ml.classification.LogisticRegression
+val lr = new LogisticRegression().setLabelCol("label").setFeaturesCol("features")
+
+val lrModel = lr.fit(train)
+
+1 - lrModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
+
+fittedLR.transform(train).select("label", "prediction").show(10)
+
+//pg 413
+val Array(train, test) = susyDF.randomSplit(Array(.002, .998))
+
+val rForm = new RFormula()
+val lr = new LogisticRegression().setLabelCol("label").setFeaturesCol("features")
+
+import org.apache.spark.ml.Pipeline
+val stages = Array(rForm, lr)
+val pipeline = new Pipeline().setStages(stages)
+
+import org.apache.spark.ml.tuning.ParamGridBuilder
+val params = new ParamGridBuilder().addGrid(rForm.formula, Array("LAB ~ . ",  "LAB ~ LEPTON_1_PT + LEPTON_1_ETA + LEPTON_1_PHI + LEPTON_2_PT + LEPTON_2_ETA + LEPTON_2_PHI + MISSING_ENERGY_MAGNITUDE + MISSING_ENERGY_PHI")).addGrid(lr.elasticNetParam, Array(0.0, 0.5, 1.0)).addGrid(lr.regParam, Array(0.1, 2.0)).build()
+
+import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+val evaluator = new BinaryClassificationEvaluator().setMetricName("areaUnderROC").setRawPredictionCol("prediction").setLabelCol("label")
+
+
+
+import org.apache.spark.ml.tuning.TrainValidationSplit
+val tvs = new TrainValidationSplit().setTrainRatio(0.75).setEstimatorParamMaps(params).setEstimator(pipeline).setEvaluator(evaluator)
+
+val tvsFitted = tvs.fit(train)
+
+evaluator.evaluate(tvsFitted.transform(test))
+
+//pg 460
+import org.apache.spark.ml.classification.DecisionTreeClassifier
+val dt = new DecisionTreeClassifier().setLabelCol("label").setFeaturesCol("features")
+val dtModel = dt.fit(train)
+
+1 - dtModel.transform(train).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
+
+//pg 462
+import org.apache.spark.ml.classification.RandomForestClassifier
+val rf = new RandomForestClassifier().setLabelCol("label").setFeaturesCol("features")
+val rfModel = rf.fit(train)
+
+rfModel.transform(train).select("label", "prediction").where("label <> prediction").count()
+
+//pg 462
+import org.apache.spark.ml.classification.GBTClassifier
+val gbt = new GBTClassifier().setLabelCol("label").setFeaturesCol("features")
+val gbtModel = gbt.fit(train)
+
+1 - gbtModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
+
+//pg 463
+import org.apache.spark.ml.classification.NaiveBayes
+val nbg = new NaiveBayes().setModelType("gaussian").setLabelCol("label").setFeaturesCol("features")
+val nbgModel = nbg.fit(train)
+
+1 - nbgModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
+
+
+//MLlib:Main Guide
+import org.apache.spark.ml.classification.MultilayerPerceptronClassifier
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+
+val layers = Array[Int](18, 9, 4, 2)
+val layers = Array[Int](18, 13, 2)
+
+val mpc = new MultilayerPerceptronClassifier().setLayers(layers).setBlockSize(128).setSeed(1234L).setMaxIter(100).setLabelCol("label").setFeaturesCol("features")
+
+val mpcModel = mpc.fit(train)
+
+1 - mpcModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
+
+//MLlib: Main Guide - don't use bad performance
+import org.apache.spark.ml.classification.LinearSVC
+
+val lscv = new LinearSVC().setMaxIter(10).setRegParam(0.1).setLabelCol("label").setFeaturesCol("features")
+
+val lscvModel = lscv.fit(train)
+
+1 - lscvModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
+
+import org.apache.spark.ml.classification.FMClassifier
+import org.apache.spark.ml.feature.MinMaxScaler
+val featureScaler = new MinMaxScaler().setMin(0).setMax(1).setInputCol("features").setOutputCol("scaledFeatures")
+val Scaler = featureScaler.fit(preparedDF)
+
+val Scaled = Scaler.transform(preparedDF)
+
+val Array(train, test) = Scaled.randomSplit(Array(.002, .998))
+
+val fm = new FMClassifier().setLabelCol("label").setFeaturesCol("scaledFeatures").setStepSize(0.001)
+
+val fmModel = fm.fit(train)
+
+1 - fmModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()import org.apache.spark.ml.classification.NaiveBayes
+val nbg = new NaiveBayes().setModelType("gaussian").setLabelCol("label").setFeaturesCol("features")
+val nbgModel = nbg.fit(train)
+
+1 - nbgModel.transform(test).select("label", "prediction").where("label <> prediction").count().toDouble / test.count()
